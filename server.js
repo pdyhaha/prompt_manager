@@ -5,7 +5,13 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+// 安全：ID 清理函数，防止路径遍历攻击
+function sanitizeId(id) {
+    if (!id || typeof id !== 'string') return '';
+    return id.replace(/[^a-zA-Z0-9-_]/g, '');
+}
 
 // 中间件
 app.use(cors());
@@ -44,14 +50,14 @@ async function ensureDirs() {
 app.get('/api/prompts', async (req, res) => {
     try {
         const files = await fs.readdir(PROMPTS_DIR);
-        const prompts = [];
+        const jsonFiles = files.filter(f => f.endsWith('.json'));
         
-        for (const file of files) {
-            if (file.endsWith('.json')) {
-                const content = await fs.readFile(path.join(PROMPTS_DIR, file), 'utf-8');
-                prompts.push(JSON.parse(content));
-            }
-        }
+        // 并行读取所有文件
+        const contents = await Promise.all(
+            jsonFiles.map(f => fs.readFile(path.join(PROMPTS_DIR, f), 'utf-8'))
+        );
+        
+        const prompts = contents.map(c => JSON.parse(c));
         
         // 按更新时间排序
         prompts.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
@@ -65,7 +71,10 @@ app.get('/api/prompts', async (req, res) => {
 // 获取单个 Prompt
 app.get('/api/prompts/:id', async (req, res) => {
     try {
-        const filePath = path.join(PROMPTS_DIR, `${req.params.id}.json`);
+        const id = sanitizeId(req.params.id);
+        if (!id) return res.status(400).json({ error: '无效的 ID' });
+        
+        const filePath = path.join(PROMPTS_DIR, `${id}.json`);
         const content = await fs.readFile(filePath, 'utf-8');
         res.json(JSON.parse(content));
     } catch (err) {
@@ -123,7 +132,10 @@ app.post('/api/prompts', async (req, res) => {
 // 更新 Prompt
 app.put('/api/prompts/:id', async (req, res) => {
     try {
-        const filePath = path.join(PROMPTS_DIR, `${req.params.id}.json`);
+        const id = sanitizeId(req.params.id);
+        if (!id) return res.status(400).json({ error: '无效的 ID' });
+        
+        const filePath = path.join(PROMPTS_DIR, `${id}.json`);
         const content = await fs.readFile(filePath, 'utf-8');
         const prompt = JSON.parse(content);
         
@@ -155,7 +167,10 @@ app.put('/api/prompts/:id', async (req, res) => {
 // 自动保存 API (用于 sendBeacon，只能发送 POST)
 app.post('/api/prompts/:id', async (req, res) => {
     try {
-        const filePath = path.join(PROMPTS_DIR, `${req.params.id}.json`);
+        const id = sanitizeId(req.params.id);
+        if (!id) return res.status(400).json({ error: '无效的 ID' });
+        
+        const filePath = path.join(PROMPTS_DIR, `${id}.json`);
         
         // 直接保存完整的 prompt 数据
         const prompt = req.body;
@@ -173,8 +188,11 @@ app.post('/api/prompts/:id', async (req, res) => {
 // 删除 Prompt (移到回收站)
 app.delete('/api/prompts/:id', async (req, res) => {
     try {
-        const srcPath = path.join(PROMPTS_DIR, `${req.params.id}.json`);
-        const destPath = path.join(RECYCLE_DIR, `${req.params.id}.json`);
+        const id = sanitizeId(req.params.id);
+        if (!id) return res.status(400).json({ error: '无效的 ID' });
+        
+        const srcPath = path.join(PROMPTS_DIR, `${id}.json`);
+        const destPath = path.join(RECYCLE_DIR, `${id}.json`);
         
         // 读取并添加删除时间
         const content = await fs.readFile(srcPath, 'utf-8');
@@ -198,15 +216,14 @@ app.delete('/api/prompts/:id', async (req, res) => {
 app.get('/api/recycle-bin', async (req, res) => {
     try {
         const files = await fs.readdir(RECYCLE_DIR);
-        const items = [];
+        const jsonFiles = files.filter(f => f.endsWith('.json'));
         
-        for (const file of files) {
-            if (file.endsWith('.json')) {
-                const content = await fs.readFile(path.join(RECYCLE_DIR, file), 'utf-8');
-                items.push(JSON.parse(content));
-            }
-        }
+        // 并行读取所有文件
+        const contents = await Promise.all(
+            jsonFiles.map(f => fs.readFile(path.join(RECYCLE_DIR, f), 'utf-8'))
+        );
         
+        const items = contents.map(c => JSON.parse(c));
         items.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
         res.json(items);
     } catch (err) {
@@ -217,8 +234,11 @@ app.get('/api/recycle-bin', async (req, res) => {
 // 从回收站恢复
 app.post('/api/recycle-bin/restore/:id', async (req, res) => {
     try {
-        const srcPath = path.join(RECYCLE_DIR, `${req.params.id}.json`);
-        const destPath = path.join(PROMPTS_DIR, `${req.params.id}.json`);
+        const id = sanitizeId(req.params.id);
+        if (!id) return res.status(400).json({ error: '无效的 ID' });
+        
+        const srcPath = path.join(RECYCLE_DIR, `${id}.json`);
+        const destPath = path.join(PROMPTS_DIR, `${id}.json`);
         
         const content = await fs.readFile(srcPath, 'utf-8');
         const prompt = JSON.parse(content);
@@ -237,7 +257,10 @@ app.post('/api/recycle-bin/restore/:id', async (req, res) => {
 // 永久删除
 app.delete('/api/recycle-bin/:id', async (req, res) => {
     try {
-        const filePath = path.join(RECYCLE_DIR, `${req.params.id}.json`);
+        const id = sanitizeId(req.params.id);
+        if (!id) return res.status(400).json({ error: '无效的 ID' });
+        
+        const filePath = path.join(RECYCLE_DIR, `${id}.json`);
         await fs.unlink(filePath);
         res.json({ success: true });
     } catch (err) {
@@ -249,11 +272,13 @@ app.delete('/api/recycle-bin/:id', async (req, res) => {
 app.delete('/api/recycle-bin', async (req, res) => {
     try {
         const files = await fs.readdir(RECYCLE_DIR);
-        for (const file of files) {
-            if (file.endsWith('.json')) {
-                await fs.unlink(path.join(RECYCLE_DIR, file));
-            }
-        }
+        const jsonFiles = files.filter(f => f.endsWith('.json'));
+        
+        // 并行删除所有文件
+        await Promise.all(
+            jsonFiles.map(f => fs.unlink(path.join(RECYCLE_DIR, f)))
+        );
+        
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: '清空失败' });
@@ -265,7 +290,10 @@ app.delete('/api/recycle-bin', async (req, res) => {
 // 删除某个版本 (v0-based)
 app.delete('/api/prompts/:id/history/:version', async (req, res) => {
     try {
-        const filePath = path.join(PROMPTS_DIR, `${req.params.id}.json`);
+        const id = sanitizeId(req.params.id);
+        if (!id) return res.status(400).json({ error: '无效的 ID' });
+        
+        const filePath = path.join(PROMPTS_DIR, `${id}.json`);
         const content = await fs.readFile(filePath, 'utf-8');
         const prompt = JSON.parse(content);
         

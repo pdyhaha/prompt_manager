@@ -805,10 +805,6 @@ class PromptManager {
             const lineIndex = parseInt(line.dataset.line);
             if (isNaN(lineIndex)) return;
             
-            // 获取行的文本内容用于调试
-            const lineText = line.textContent.substring(0, 30);
-            console.log('MouseMove - lineIndex from data-line:', lineIndex, 'content:', lineText);
-            
             // 使用节流避免频繁同步
             if (syncTimeout) clearTimeout(syncTimeout);
             syncTimeout = setTimeout(() => {
@@ -827,8 +823,6 @@ class PromptManager {
      * 导航到指定的差异
      */
     navigateToDiff(index) {
-        console.log('navigateToDiff called with index:', index, 'diffItems.length:', this.diffItems?.length);
-        
         if (!this.diffItems || this.diffItems.length === 0) return;
         
         // 循环导航
@@ -838,22 +832,16 @@ class PromptManager {
         this.currentDiffIndex = index;
         const item = this.diffItems[index];
         
-        console.log('Navigating to item:', item, 'at index:', index);
-        
         // 更新导航数字显示
         const currentLabel = document.getElementById('diffNavCurrent');
         if (currentLabel) {
             currentLabel.textContent = index + 1;
-            console.log('Updated diffNavCurrent to:', index + 1);
         }
         
         // 更新 marker 激活状态
         const markers = document.querySelectorAll('.diff-nav-marker');
-        console.log('Found markers:', markers.length);
         markers.forEach((marker, i) => {
-            const isActive = i === index;
-            marker.classList.toggle('active', isActive);
-            if (isActive) console.log('Activated marker at index:', i);
+            marker.classList.toggle('active', i === index);
         });
         
         // 高亮差异行
@@ -1032,15 +1020,12 @@ class PromptManager {
         const selectId = which === 'A' ? 'diffVersionA' : 'diffVersionB';
         const versionIndex = document.getElementById(selectId).value;
         
-        console.log('Delete version - selectId:', selectId, 'versionIndex:', versionIndex);
-        
         if (versionIndex === 'current') {
             this.showToast('无法删除当前版本，请使用删除 Prompt 功能', 'error');
             return;
         }
         
         const idx = parseInt(versionIndex);
-        console.log('Parsed idx:', idx, 'history.length:', this.currentPrompt.history.length);
         
         if (isNaN(idx) || idx < 0 || idx >= this.currentPrompt.history.length) {
             this.showToast('请先选择要删除的历史版本', 'error');
@@ -1048,7 +1033,6 @@ class PromptManager {
         }
         
         const historyItem = this.currentPrompt.history[idx];
-        console.log('Deleting historyItem:', historyItem);
         
         this.showConfirmModal(
             '确认删除版本',
@@ -1454,7 +1438,6 @@ class PromptManager {
         }
         
         this.saveToStorage();
-        this.saveRecycleBin();
         
         this.closeRecycleDiff();
         this.renderRecycleBin();
@@ -1497,7 +1480,6 @@ class PromptManager {
         }
         
         this.saveToStorage();
-        this.saveRecycleBin();
         this.renderRecycleBin();
         
         // 如果当前正在编辑这个 prompt，刷新版本选择器
@@ -1520,7 +1502,6 @@ class PromptManager {
                 const idx = this.recycleBin.findIndex(r => r.id === itemId);
                 if (idx > -1) {
                     this.recycleBin.splice(idx, 1);
-                    this.saveRecycleBin();
                     this.renderRecycleBin();
                     this.showToast('已永久删除', 'success');
                 }

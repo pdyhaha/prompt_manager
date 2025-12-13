@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt 管理平台</title>
+    <meta name="description" content="本地 Prompt 管理平台，支持版本历史跟踪和差异对比">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">📝 Prompt Manager</h1>
+                <button id="newPromptBtn" class="btn btn-primary btn-block">
+                    <span class="icon">+</span> 新建 Prompt
+                </button>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="搜索 Prompt..." class="search-input">
+            </div>
+            
+            <div class="tags-filter">
+                <h3 class="section-title">标签筛选</h3>
+                <div id="tagsContainer" class="tags-list">
+                    <!-- 动态生成标签 -->
+                </div>
+            </div>
+            
+            <div class="prompts-list-container">
+                <h3 class="section-title">Prompt 列表</h3>
+                <div id="promptsList" class="prompts-list">
+                    <!-- 动态生成列表 -->
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="batch-actions" id="batchActions" style="display: none;">
+                    <span class="batch-count">已选择 <span id="selectedCount">0</span> 项</span>
+                    <button id="batchDeleteBtn" class="btn btn-danger btn-sm">🗑️ 批量删除</button>
+                    <button id="cancelBatchBtn" class="btn btn-secondary btn-sm">取消</button>
+                </div>
+                <button id="batchModeBtn" class="btn btn-secondary btn-sm btn-block">
+                    ☑️ 批量选择
+                </button>
+                <button id="recycleBinBtn" class="btn btn-secondary btn-sm btn-block">
+                    🗑️ 回收站
+                </button>
+                <div class="sidebar-footer-row">
+                    <button id="exportBtn" class="btn btn-secondary btn-sm">
+                        📤 导出
+                    </button>
+                    <button id="importBtn" class="btn btn-secondary btn-sm">
+                        📥 导入
+                    </button>
+                </div>
+                <button id="exitBtn" class="btn btn-danger btn-sm btn-block" style="margin-top: 8px;">
+                    ⏻ 退出应用
+                </button>
+                <input type="file" id="importFile" accept=".json" style="display: none;">
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 空状态 -->
+            <div id="emptyState" class="empty-state">
+                <div class="empty-icon">📋</div>
+                <h2>欢迎使用 Prompt 管理平台</h2>
+                <p>点击左侧「新建 Prompt」开始创建你的第一个 Prompt</p>
+            </div>
+
+            <!-- 编辑区 -->
+            <div id="editorPanel" class="editor-panel" style="display: none;">
+                <div class="editor-header">
+                    <input type="text" id="promptTitle" placeholder="输入 Prompt 标题..." class="title-input">
+                    <div class="editor-actions">
+                        <button id="copyBtn" class="btn btn-icon" title="复制到剪贴板">
+                            📋 复制
+                        </button>
+                        <button id="saveBtn" class="btn btn-primary">
+                            💾 保存
+                        </button>
+                        <button id="deleteBtn" class="btn btn-danger">
+                            🗑️ 删除
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="tags-input-container">
+                    <label>标签：</label>
+                    <input type="text" id="tagsInput" placeholder="输入标签，用逗号分隔..." class="tags-input">
+                </div>
+                
+                <div class="editor-body">
+                    <textarea id="promptContent" placeholder="在这里输入你的 Prompt 内容..." class="content-textarea"></textarea>
+                </div>
+                
+                <div class="editor-footer">
+                    <span id="charCount" class="char-count">0 字符</span>
+                    <span id="lastSaved" class="last-saved"></span>
+                </div>
+            </div>
+        </main>
+
+        <!-- 右侧历史面板 -->
+        <aside id="historyPanel" class="history-panel" style="display: none;">
+            <div class="history-header">
+                <h2>📜 版本对比</h2>
+                <button id="closeHistoryBtn" class="btn btn-icon btn-sm">✕</button>
+            </div>
+            
+            <!-- 双窗口差异对比 -->
+            <div class="diff-compare-container">
+                <!-- 上方窗口 - 历史版本 -->
+                <div class="diff-pane diff-pane-top">
+                    <div class="diff-pane-header">
+                        <label>历史版本：</label>
+                        <select id="diffVersionA" class="version-select">
+                            <!-- 动态生成版本选项 -->
+                        </select>
+                    </div>
+                    <div id="diffContentA" class="diff-pane-content">
+                        <!-- 版本 A 内容 -->
+                    </div>
+                </div>
+                
+                <!-- 分隔线 -->
+                <div class="diff-divider">
+                    <span class="diff-divider-label">↕ 对比</span>
+                </div>
+                
+                <!-- 下方窗口 - 版本 B (当前版本，固定) -->
+                <div class="diff-pane diff-pane-bottom">
+                    <div class="diff-pane-header">
+                        <label>当前版本：</label>
+                        <span id="currentVersionLabel" class="current-version-label">v1</span>
+                    </div>
+                    <!-- 差异快速跳转进度条 -->
+                    <div class="diff-nav-bar">
+                        <div class="diff-nav-label">修改:</div>
+                        <div id="diffNavTrack" class="diff-nav-track">
+                            <!-- 动态生成修改标记 -->
+                        </div>
+                        <div class="diff-nav-info">
+                            <span id="diffNavCurrent">0</span>/<span id="diffNavTotal">0</span>
+                            <button id="diffNavPrev" class="btn btn-icon btn-xs" title="上一处">◀</button>
+                            <button id="diffNavNext" class="btn btn-icon btn-xs" title="下一处">▶</button>
+                        </div>
+                    </div>
+                    <div id="diffContentB" class="diff-pane-content">
+                        <!-- 版本 B 内容 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div class="diff-actions">
+                <button id="deleteVersionABtn" class="btn btn-danger btn-sm">
+                    🗑️ 删除历史版本
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- 通知提示 -->
+    <div id="toast" class="toast"></div>
+
+    <!-- 确认对话框 -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <h3 id="confirmTitle">确认操作</h3>
+            <p id="confirmMessage">确定要执行此操作吗？</p>
+            <div class="modal-actions">
+                <button id="confirmCancel" class="btn btn-secondary">取消</button>
+                <button id="confirmOk" class="btn btn-danger">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 回收站对话框 -->
+    <div id="recycleBinModal" class="modal">
+        <div class="modal-content modal-md">
+            <div class="modal-header">
+                <h3>🗑️ 回收站</h3>
+                <button id="closeRecycleBinBtn" class="btn btn-icon btn-sm">✕</button>
+            </div>
+            <div id="recycleBinContent" class="recycle-bin-content">
+                <!-- 动态生成回收站内容 -->
+            </div>
+            <div class="modal-footer">
+                <button id="emptyRecycleBinBtn" class="btn btn-danger btn-sm">
+                    🗑️ 清空回收站
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 回收站版本对比对话框 -->
+    <div id="recycleDiffModal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>📋 版本对比</h3>
+                <button id="closeRecycleDiffBtn" class="btn btn-icon btn-sm">✕</button>
+            </div>
+            <div class="recycle-diff-container">
+                <div class="recycle-diff-pane">
+                    <div class="diff-pane-header">
+                        <label>已删除版本</label>
+                    </div>
+                    <div id="recycleDiffDeleted" class="diff-pane-content"></div>
+                </div>
+                <div class="diff-divider">
+                    <span class="diff-divider-label">↕ 差异对比</span>
+                </div>
+                <div class="recycle-diff-pane">
+                    <div class="diff-pane-header">
+                        <label>对比版本：</label>
+                        <select id="recycleCompareVersion" class="version-select"></select>
+                    </div>
+                    <div id="recycleDiffCompare" class="diff-pane-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="restoreFromRecycleBtn" class="btn btn-primary btn-sm">
+                    ↩️ 恢复此版本
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="diff.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

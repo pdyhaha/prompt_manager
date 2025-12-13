@@ -238,10 +238,15 @@ class PromptManager {
                 e.preventDefault();
                 this.saveCurrentPrompt();
             }
-            // Ctrl/Cmd + N 新建
-            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            // Alt/Option + N 新建 (使用 code 避免 macOS 特殊字符问题)
+            if (e.altKey && e.code === 'KeyN') {
                 e.preventDefault();
                 this.createNewPrompt();
+            }
+            // Alt/Option + Backspace 删除当前 Prompt
+            if (e.altKey && e.code === 'Backspace') {
+                e.preventDefault();
+                this.showDeleteConfirm(e);
             }
         });
     }
@@ -1921,6 +1926,21 @@ class PromptManager {
         
         modal.classList.add('show');
         this.confirmCallback = callback;
+        
+        // 添加键盘事件监听
+        this.modalKeyHandler = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (this.confirmCallback) {
+                    this.confirmCallback();
+                }
+                this.hideConfirmModal();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                this.hideConfirmModal();
+            }
+        };
+        document.addEventListener('keydown', this.modalKeyHandler);
     }
     
     /**
@@ -1929,6 +1949,12 @@ class PromptManager {
     hideConfirmModal() {
         document.getElementById('confirmModal').classList.remove('show');
         this.confirmCallback = null;
+        
+        // 移除键盘事件监听
+        if (this.modalKeyHandler) {
+            document.removeEventListener('keydown', this.modalKeyHandler);
+            this.modalKeyHandler = null;
+        }
     }
 }
 

@@ -129,7 +129,8 @@ prompt_manager/
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl/Cmd + S` | 保存当前 Prompt |
-| `Ctrl/Cmd + N` | 新建 Prompt |
+| `Alt/Option + N` | 新建 Prompt |
+| `Alt/Option + ⌫` | 删除当前 Prompt |
 | `Tab` | 插入两个空格 |
 
 ---

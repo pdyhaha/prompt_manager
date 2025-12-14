@@ -525,6 +525,66 @@ class PromptManager {
      * 导出数据
      */
     exportData() {
+        this.showExportFormatModal();
+    }
+    
+    /**
+     * 显示导出格式选择对话框
+     */
+    showExportFormatModal() {
+        // 创建格式选择模态框
+        const existingModal = document.getElementById('exportFormatModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        const modal = document.createElement('div');
+        modal.id = 'exportFormatModal';
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h3>选择导出格式</h3>
+                <div class="export-format-options" style="display: flex; gap: 12px; margin: 20px 0;">
+                    <button id="exportJsonBtn" class="btn btn-primary" style="flex: 1; padding: 16px;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">📄</div>
+                        <div>JSON 格式</div>
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">包含完整数据结构</div>
+                    </button>
+                    <button id="exportPyBtn" class="btn btn-secondary" style="flex: 1; padding: 16px;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🐍</div>
+                        <div>Python 格式</div>
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">导出为 .py 变量</div>
+                    </button>
+                </div>
+                <div class="modal-actions">
+                    <button id="cancelExportBtn" class="btn btn-secondary">取消</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // 绑定事件
+        document.getElementById('exportJsonBtn').addEventListener('click', () => {
+            this.doExportJson();
+            modal.remove();
+        });
+        document.getElementById('exportPyBtn').addEventListener('click', () => {
+            this.doExportPython();
+            modal.remove();
+        });
+        document.getElementById('cancelExportBtn').addEventListener('click', () => {
+            modal.remove();
+        });
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+    }
+    
+    /**
+     * 导出为 JSON 格式
+     */
+    doExportJson() {
         const data = {
             version: '1.0',
             exportedAt: new Date().toISOString(),
@@ -539,7 +599,102 @@ class PromptManager {
         a.click();
         URL.revokeObjectURL(url);
         
-        this.showToast('导出成功 📤', 'success');
+        this.showToast('导出 JSON 成功 📤', 'success');
+    }
+    
+    /**
+     * 将标题转换为有效的 Python 变量名
+     */
+    titleToVarName(title) {
+        if (!title) return 'untitled';
+        
+        // 替换中文和特殊字符为下划线
+        let varName = title
+            .replace(/[^a-zA-Z0-9\u4e00-\u9fa5_]/g, '_')  // 非字母数字中文替换为下划线
+            .replace(/_+/g, '_')  // 多个下划线合并
+            .replace(/^_|_$/g, '');  // 去除首尾下划线
+        
+        // 如果以数字开头，添加前缀
+        if (/^[0-9]/.test(varName)) {
+            varName = 'prompt_' + varName;
+        }
+        
+        // 如果为空，使用默认名
+        if (!varName) {
+            varName = 'untitled';
+        }
+        
+        return varName;
+    }
+    
+    /**
+     * 导出为 Python 格式
+     */
+    doExportPython() {
+        const lines = [];
+        lines.push('# -*- coding: utf-8 -*-');
+        lines.push('"""');
+        lines.push('Prompts 导出文件');
+        lines.push(`导出时间: ${new Date().toLocaleString('zh-CN')}`);
+        lines.push(`总数量: ${this.prompts.length} 个 Prompt`);
+        lines.push('"""');
+        lines.push('');
+        
+        // 用于跟踪变量名避免重复
+        const usedNames = new Set();
+        
+        this.prompts.forEach((prompt, index) => {
+            // 生成变量名
+            let varName = this.titleToVarName(prompt.title);
+            
+            // 确保变量名唯一
+            let finalVarName = varName;
+            let counter = 1;
+            while (usedNames.has(finalVarName)) {
+                finalVarName = `${varName}_${counter}`;
+                counter++;
+            }
+            usedNames.add(finalVarName);
+            
+            // 添加注释
+            lines.push(`# ${index + 1}. ${prompt.title || '未命名'}`);
+            if (prompt.tags && prompt.tags.length > 0) {
+                lines.push(`# 标签: ${prompt.tags.join(', ')}`);
+            }
+            lines.push(`# 更新时间: ${new Date(prompt.updatedAt).toLocaleString('zh-CN')}`);
+            
+            // 使用三引号处理多行内容
+            const content = prompt.content || '';
+            // 转义三引号
+            const escapedContent = content.replace(/"""/g, '\\"\\"\\"');
+            
+            lines.push(`${finalVarName} = """${escapedContent}"""`);
+            lines.push('');
+        });
+        
+        // 添加汇总字典
+        lines.push('# 所有 Prompts 的字典汇总');
+        lines.push('ALL_PROMPTS = {');
+        
+        const usedNamesArray = Array.from(usedNames);
+        this.prompts.forEach((prompt, index) => {
+            const varName = usedNamesArray[index];
+            const title = (prompt.title || '未命名').replace(/'/g, "\\'");
+            lines.push(`    '${title}': ${varName},`);
+        });
+        
+        lines.push('}');
+        lines.push('');
+        
+        const blob = new Blob([lines.join('\n')], { type: 'text/x-python' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `prompts_${new Date().toISOString().split('T')[0]}.py`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        this.showToast('导出 Python 成功 📤', 'success');
     }
     
     /**
@@ -549,26 +704,16 @@ class PromptManager {
         const file = event.target.files[0];
         if (!file) return;
         
+        const fileName = file.name.toLowerCase();
+        const isPython = fileName.endsWith('.py');
+        
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const data = JSON.parse(e.target.result);
-                
-                if (data.prompts && Array.isArray(data.prompts)) {
-                    // 合并导入的数据
-                    const existingIds = new Set(this.prompts.map(p => p.id));
-                    const newPrompts = data.prompts.filter(p => !existingIds.has(p.id));
-                    
-                    if (newPrompts.length > 0) {
-                        this.prompts = [...newPrompts, ...this.prompts];
-                        this.saveToStorage();
-                        this.render();
-                        this.showToast(`成功导入 ${newPrompts.length} 个 Prompt 📥`, 'success');
-                    } else {
-                        this.showToast('没有新的 Prompt 可导入', 'error');
-                    }
+                if (isPython) {
+                    this.importPythonData(e.target.result);
                 } else {
-                    throw new Error('无效的数据格式');
+                    this.importJsonData(e.target.result);
                 }
             } catch (err) {
                 console.error('导入失败:', err);
@@ -579,6 +724,171 @@ class PromptManager {
         
         // 重置 input
         event.target.value = '';
+    }
+    
+    /**
+     * 导入 JSON 数据
+     */
+    importJsonData(content) {
+        const data = JSON.parse(content);
+        
+        if (data.prompts && Array.isArray(data.prompts)) {
+            // 合并导入的数据
+            const existingIds = new Set(this.prompts.map(p => p.id));
+            const newPrompts = data.prompts.filter(p => !existingIds.has(p.id));
+            
+            if (newPrompts.length > 0) {
+                this.prompts = [...newPrompts, ...this.prompts];
+                this.saveToStorage();
+                this.render();
+                this.showToast(`成功导入 ${newPrompts.length} 个 Prompt 📥`, 'success');
+            } else {
+                this.showToast('没有新的 Prompt 可导入', 'error');
+            }
+        } else {
+            throw new Error('无效的数据格式');
+        }
+    }
+    
+    /**
+     * 导入 Python 数据
+     */
+    importPythonData(content) {
+        const prompts = this.parsePythonPrompts(content);
+        
+        if (prompts.length === 0) {
+            this.showToast('未找到有效的 Prompt 变量', 'error');
+            return;
+        }
+        
+        // 检查重复（基于内容）
+        const existingContents = new Set(this.prompts.map(p => p.content));
+        const newPrompts = prompts.filter(p => !existingContents.has(p.content));
+        
+        if (newPrompts.length > 0) {
+            this.prompts = [...newPrompts, ...this.prompts];
+            this.saveToStorage();
+            this.render();
+            this.showToast(`成功从 Python 导入 ${newPrompts.length} 个 Prompt 📥`, 'success');
+        } else {
+            this.showToast('没有新的 Prompt 可导入（内容已存在）', 'error');
+        }
+    }
+    
+    /**
+     * 解析 Python 文件中的 Prompt 变量
+     */
+    parsePythonPrompts(content) {
+        const prompts = [];
+        const lines = content.split('\n');
+        
+        let i = 0;
+        while (i < lines.length) {
+            const line = lines[i];
+            
+            // 查找注释行作为标题
+            let title = '';
+            let tags = [];
+            
+            // 检查是否是注释行（可能包含标题信息）
+            if (line.trim().startsWith('#')) {
+                // 尝试提取标题（格式: # 1. 标题名）
+                const titleMatch = line.match(/^#\s*\d+\.\s*(.+)$/);
+                if (titleMatch) {
+                    title = titleMatch[1].trim();
+                }
+                
+                // 检查下一行是否有标签
+                if (i + 1 < lines.length) {
+                    const tagLine = lines[i + 1];
+                    const tagMatch = tagLine.match(/^#\s*标签:\s*(.+)$/);
+                    if (tagMatch) {
+                        tags = tagMatch[1].split(',').map(t => t.trim()).filter(t => t);
+                        i++;
+                    }
+                }
+                
+                // 跳过更新时间注释
+                if (i + 1 < lines.length && lines[i + 1].trim().startsWith('# 更新时间:')) {
+                    i++;
+                }
+            }
+            
+            // 查找变量定义（三引号字符串）
+            // 格式: var_name = """content"""
+            const varMatch = line.match(/^([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\s*=\s*\"\"\"(.*)$/);
+            
+            if (varMatch) {
+                const varName = varMatch[1];
+                let contentStart = varMatch[2];
+                
+                // 跳过特殊变量
+                if (varName === 'ALL_PROMPTS') {
+                    i++;
+                    continue;
+                }
+                
+                // 检查是否是单行三引号字符串
+                if (contentStart.endsWith('"""')) {
+                    // 单行情况
+                    const contentValue = contentStart.slice(0, -3).replace(/\\"/g, '"');
+                    
+                    prompts.push({
+                        id: this.generateId(),
+                        title: title || this.varNameToTitle(varName),
+                        content: contentValue,
+                        tags: tags,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        history: []
+                    });
+                } else {
+                    // 多行情况
+                    let contentParts = [contentStart];
+                    i++;
+                    
+                    while (i < lines.length) {
+                        const currentLine = lines[i];
+                        
+                        // 检查是否包含结束三引号
+                        const endIndex = currentLine.indexOf('"""');
+                        if (endIndex !== -1) {
+                            contentParts.push(currentLine.substring(0, endIndex));
+                            break;
+                        } else {
+                            contentParts.push(currentLine);
+                        }
+                        i++;
+                    }
+                    
+                    const contentValue = contentParts.join('\n').replace(/\\"/g, '"');
+                    
+                    prompts.push({
+                        id: this.generateId(),
+                        title: title || this.varNameToTitle(varName),
+                        content: contentValue,
+                        tags: tags,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        history: []
+                    });
+                }
+            }
+            
+            i++;
+        }
+        
+        return prompts;
+    }
+    
+    /**
+     * 将变量名转换为可读标题
+     */
+    varNameToTitle(varName) {
+        return varName
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, c => c.toUpperCase())
+            .trim();
     }
     
     /**

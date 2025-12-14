@@ -82,9 +82,29 @@ app.get('/api/prompts/:id', async (req, res) => {
     }
 });
 
-// 创建 Prompt
+// 创建 Prompt (也支持导入)
 app.post('/api/prompts', async (req, res) => {
     try {
+        // 检查是否是导入操作（带有完整的 prompt 对象）
+        if (req.body.id && req.body.createdAt) {
+            // 导入模式：使用提供的完整数据
+            const importedPrompt = {
+                id: req.body.id,
+                title: req.body.title || '未命名 Prompt',
+                content: req.body.content || '',
+                tags: req.body.tags || [],
+                createdAt: req.body.createdAt,
+                updatedAt: req.body.updatedAt || new Date().toISOString(),
+                history: req.body.history || []
+            };
+            
+            const filePath = path.join(PROMPTS_DIR, `${sanitizeId(importedPrompt.id)}.json`);
+            await fs.writeFile(filePath, JSON.stringify(importedPrompt, null, 2));
+            console.log(`[导入] ${importedPrompt.title}`);
+            return res.status(201).json(importedPrompt);
+        }
+        
+        // 常规创建模式
         // 生成唯一标题
         let baseTitle = req.body.title || '未命名 Prompt';
         let title = baseTitle;

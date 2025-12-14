@@ -729,7 +729,7 @@ class PromptManager {
     /**
      * 导入 JSON 数据
      */
-    importJsonData(content) {
+    async importJsonData(content) {
         const data = JSON.parse(content);
         
         if (data.prompts && Array.isArray(data.prompts)) {
@@ -738,8 +738,9 @@ class PromptManager {
             const newPrompts = data.prompts.filter(p => !existingIds.has(p.id));
             
             if (newPrompts.length > 0) {
+                // 保存每个新 prompt 到后端
+                await this.saveImportedPrompts(newPrompts);
                 this.prompts = [...newPrompts, ...this.prompts];
-                this.saveToStorage();
                 this.render();
                 this.showToast(`成功导入 ${newPrompts.length} 个 Prompt 📥`, 'success');
             } else {
@@ -753,7 +754,7 @@ class PromptManager {
     /**
      * 导入 Python 数据
      */
-    importPythonData(content) {
+    async importPythonData(content) {
         const prompts = this.parsePythonPrompts(content);
         
         if (prompts.length === 0) {
@@ -766,12 +767,33 @@ class PromptManager {
         const newPrompts = prompts.filter(p => !existingContents.has(p.content));
         
         if (newPrompts.length > 0) {
+            // 保存每个新 prompt 到后端
+            await this.saveImportedPrompts(newPrompts);
             this.prompts = [...newPrompts, ...this.prompts];
-            this.saveToStorage();
             this.render();
             this.showToast(`成功从 Python 导入 ${newPrompts.length} 个 Prompt 📥`, 'success');
         } else {
             this.showToast('没有新的 Prompt 可导入（内容已存在）', 'error');
+        }
+    }
+    
+    /**
+     * 保存导入的 prompts 到后端
+     */
+    async saveImportedPrompts(prompts) {
+        const promises = prompts.map(prompt => 
+            fetch(`${this.API_BASE}/prompts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(prompt)
+            })
+        );
+        
+        try {
+            await Promise.all(promises);
+        } catch (e) {
+            console.error('保存导入数据失败:', e);
+            throw e;
         }
     }
     

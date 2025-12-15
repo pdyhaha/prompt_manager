@@ -20,6 +20,9 @@ pids/
 *.pid
 *.seed
 
+# Environment variables (API keys)
+.env
+
 # Optional: Uncomment to exclude user data from git
 prompts/*.json
 recycle_bin/*.json

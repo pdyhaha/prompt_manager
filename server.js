@@ -1,8 +1,27 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs').promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+
+// AI API Keys
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+
+// System prompt for optimizing prompts
+const OPTIMIZATION_SYSTEM_PROMPT = `你是一个专业的 Prompt 工程师。你的任务是优化用户提供的 Prompt，使其更加清晰、具体、有效。
+
+优化原则：
+1. 保持原意：不改变 Prompt 的核心目的和意图
+2. 结构清晰：使用清晰的结构和格式（如分点、分段）
+3. 具体明确：将模糊的描述改为具体的指令
+4. 添加约束：适当添加输出格式、长度、语气等约束
+5. 角色设定：如果适合，添加或优化角色设定
+6. 示例补充：如果需要，添加简短的示例
+
+直接返回优化后的 Prompt，不要包含任何解释或说明。`;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -352,6 +371,113 @@ app.delete('/api/prompts/:id/history/:version', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: '删除版本失败' });
     }
+});
+
+// ========== AI Optimization API ==========
+
+// 调用 Claude API
+async function callClaudeAPI(content) {
+    if (!ANTHROPIC_API_KEY) {
+        throw new Error('未配置 ANTHROPIC_API_KEY');
+    }
+    
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 4096,
+            system: OPTIMIZATION_SYSTEM_PROMPT,
+            messages: [
+                { role: 'user', content: `请优化以下 Prompt：\n\n${content}` }
+            ]
+        })
+    });
+    
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Claude API 错误: ${error}`);
+    }
+    
+    const data = await response.json();
+    return data.content[0].text;
+}
+
+// 调用 Gemini API
+async function callGeminiAPI(content) {
+    if (!GOOGLE_API_KEY) {
+        throw new Error('未配置 GOOGLE_API_KEY');
+    }
+    
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            systemInstruction: {
+                parts: [{ text: OPTIMIZATION_SYSTEM_PROMPT }]
+            },
+            contents: [
+                {
+                    parts: [{ text: `请优化以下 Prompt：\n\n${content}` }]
+                }
+            ],
+            generationConfig: {
+                maxOutputTokens: 4096
+            }
+        })
+    });
+    
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Gemini API 错误: ${error}`);
+    }
+    
+    const data = await response.json();
+    return data.candidates[0].content.parts[0].text;
+}
+
+// AI 优化 Prompt 接口
+app.post('/api/ai/optimize', async (req, res) => {
+    try {
+        const { content, model } = req.body;
+        
+        if (!content) {
+            return res.status(400).json({ error: '请提供要优化的 Prompt 内容' });
+        }
+        
+        if (!model || !['claude', 'gemini'].includes(model)) {
+            return res.status(400).json({ error: '请选择有效的模型 (claude 或 gemini)' });
+        }
+        
+        console.log(`[AI 优化] 使用 ${model} 模型优化 Prompt...`);
+        
+        let optimized;
+        if (model === 'claude') {
+            optimized = await callClaudeAPI(content);
+        } else {
+            optimized = await callGeminiAPI(content);
+        }
+        
+        console.log(`[AI 优化] ${model} 优化完成`);
+        res.json({ optimized });
+    } catch (err) {
+        console.error('[AI 优化] 失败:', err.message);
+        res.status(500).json({ error: err.message || '优化失败' });
+    }
+});
+
+// 检查 API 配置状态
+app.get('/api/ai/status', (req, res) => {
+    res.json({
+        claude: !!ANTHROPIC_API_KEY,
+        gemini: !!GOOGLE_API_KEY
+    });
 });
 
 // 关闭服务器 API

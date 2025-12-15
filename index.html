@@ -78,7 +78,10 @@
             <div id="editorPanel" class="editor-panel" style="display: none;">
                 <div class="editor-header">
                     <input type="text" id="promptTitle" placeholder="输入 Prompt 标题..." class="title-input">
-                    <div class="editor-actions">
+                <div class="editor-actions">
+                        <button id="aiOptimizeBtn" class="btn btn-ai" title="AI 优化提示词">
+                            ✨ AI 优化
+                        </button>
                         <button id="copyBtn" class="btn btn-icon" title="复制到剪贴板">
                             📋 复制
                         </button>
@@ -228,6 +231,52 @@
             <div class="modal-footer">
                 <button id="restoreFromRecycleBtn" class="btn btn-primary btn-sm">
                     ↩️ 恢复此版本
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI 优化对话框 -->
+    <div id="aiOptimizeModal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>✨ AI Prompt 优化</h3>
+                <button id="closeAIOptimizeBtn" class="btn btn-icon btn-sm">✕</button>
+            </div>
+            <div class="ai-optimize-controls">
+                <div class="model-selector">
+                    <label>选择模型：</label>
+                    <select id="aiModelSelect" class="version-select ai-model-select">
+                        <option value="gemini">🌟 Gemini</option>
+                        <option value="claude">🤖 Claude</option>
+                    </select>
+                </div>
+                <button id="runOptimizeBtn" class="btn btn-primary">
+                    🚀 开始优化
+                </button>
+            </div>
+            <div class="ai-optimize-content">
+                <div class="ai-content-pane">
+                    <div class="ai-pane-header">📝 原始 Prompt</div>
+                    <div id="aiOriginalContent" class="ai-pane-content"></div>
+                </div>
+                <div class="ai-arrow">→</div>
+                <div class="ai-content-pane">
+                    <div class="ai-pane-header">✨ 优化结果</div>
+                    <div id="aiOptimizedContent" class="ai-pane-content">
+                        <div class="ai-placeholder">点击「开始优化」查看结果</div>
+                    </div>
+                </div>
+            </div>
+            <div id="aiLoadingIndicator" class="ai-loading" style="display: none;">
+                <div class="ai-spinner"></div>
+                <span>AI 正在优化中...</span>
+            </div>
+            <div id="aiErrorMessage" class="ai-error" style="display: none;"></div>
+            <div class="modal-footer">
+                <button id="cancelAIOptimizeBtn" class="btn btn-secondary">取消</button>
+                <button id="replaceContentBtn" class="btn btn-primary" disabled>
+                    ✓ 替换内容
                 </button>
             </div>
         </div>

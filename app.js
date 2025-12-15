@@ -231,6 +231,13 @@ class PromptManager {
             this.hideConfirmModal();
         });
         
+        // AI 优化功能
+        document.getElementById('aiOptimizeBtn').addEventListener('click', () => this.showAIOptimizeModal());
+        document.getElementById('closeAIOptimizeBtn').addEventListener('click', () => this.closeAIOptimizeModal());
+        document.getElementById('cancelAIOptimizeBtn').addEventListener('click', () => this.closeAIOptimizeModal());
+        document.getElementById('runOptimizeBtn').addEventListener('click', () => this.runAIOptimize());
+        document.getElementById('replaceContentBtn').addEventListener('click', () => this.replaceWithOptimized());
+        
         // 键盘快捷键
         document.addEventListener('keydown', (e) => {
             // Ctrl/Cmd + S 保存
@@ -2287,6 +2294,116 @@ class PromptManager {
             document.removeEventListener('keydown', this.modalKeyHandler);
             this.modalKeyHandler = null;
         }
+    }
+    
+    // ========== AI 优化功能 ==========
+    
+    /**
+     * 显示 AI 优化对话框
+     */
+    showAIOptimizeModal() {
+        const content = document.getElementById('promptContent').value;
+        
+        if (!content.trim()) {
+            this.showToast('请先输入 Prompt 内容', 'error');
+            return;
+        }
+        
+        // 显示原始内容
+        document.getElementById('aiOriginalContent').textContent = content;
+        
+        // 重置优化结果区域
+        document.getElementById('aiOptimizedContent').innerHTML = '<div class="ai-placeholder">点击「开始优化」查看结果</div>';
+        document.getElementById('aiOptimizedContent').classList.remove('has-content');
+        
+        // 隐藏加载和错误状态
+        document.getElementById('aiLoadingIndicator').style.display = 'none';
+        document.getElementById('aiErrorMessage').style.display = 'none';
+        
+        // 禁用替换按钮
+        document.getElementById('replaceContentBtn').disabled = true;
+        
+        // 清除存储的优化结果
+        this.optimizedContent = null;
+        
+        // 显示模态框
+        document.getElementById('aiOptimizeModal').classList.add('show');
+    }
+    
+    /**
+     * 关闭 AI 优化对话框
+     */
+    closeAIOptimizeModal() {
+        document.getElementById('aiOptimizeModal').classList.remove('show');
+        this.optimizedContent = null;
+    }
+    
+    /**
+     * 运行 AI 优化
+     */
+    async runAIOptimize() {
+        const content = document.getElementById('promptContent').value;
+        const model = document.getElementById('aiModelSelect').value;
+        
+        // 显示加载状态
+        document.getElementById('aiLoadingIndicator').style.display = 'flex';
+        document.getElementById('aiErrorMessage').style.display = 'none';
+        document.getElementById('aiOptimizedContent').innerHTML = '<div class="ai-placeholder">AI 正在分析优化中...</div>';
+        document.getElementById('replaceContentBtn').disabled = true;
+        document.getElementById('runOptimizeBtn').disabled = true;
+        
+        try {
+            const response = await fetch(`${this.API_BASE}/ai/optimize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content, model })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || '优化失败');
+            }
+            
+            // 保存优化结果
+            this.optimizedContent = data.optimized;
+            
+            // 显示优化结果
+            document.getElementById('aiOptimizedContent').textContent = data.optimized;
+            document.getElementById('aiOptimizedContent').classList.add('has-content');
+            
+            // 启用替换按钮
+            document.getElementById('replaceContentBtn').disabled = false;
+            
+            this.showToast('优化完成 ✨', 'success');
+        } catch (err) {
+            console.error('AI 优化失败:', err);
+            document.getElementById('aiErrorMessage').textContent = err.message;
+            document.getElementById('aiErrorMessage').style.display = 'flex';
+            document.getElementById('aiOptimizedContent').innerHTML = '<div class="ai-placeholder">优化失败，请重试</div>';
+        } finally {
+            document.getElementById('aiLoadingIndicator').style.display = 'none';
+            document.getElementById('runOptimizeBtn').disabled = false;
+        }
+    }
+    
+    /**
+     * 替换内容为优化结果
+     */
+    replaceWithOptimized() {
+        if (!this.optimizedContent) {
+            this.showToast('没有可替换的内容', 'error');
+            return;
+        }
+        
+        // 替换编辑器内容
+        document.getElementById('promptContent').value = this.optimizedContent;
+        document.getElementById('charCount').textContent = `${this.optimizedContent.length} 字符`;
+        
+        // 关闭模态框
+        this.closeAIOptimizeModal();
+        
+        this.showToast('已替换为优化后的内容 ✓', 'success');
     }
 }
 

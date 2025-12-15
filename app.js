@@ -237,6 +237,34 @@ class PromptManager {
         document.getElementById('cancelAIOptimizeBtn').addEventListener('click', () => this.closeAIOptimizeModal());
         document.getElementById('runOptimizeBtn').addEventListener('click', () => this.runAIOptimize());
         document.getElementById('replaceContentBtn').addEventListener('click', () => this.replaceWithOptimized());
+        document.getElementById('saveOptimizedBtn').addEventListener('click', () => this.saveOptimizedAsVersion());
+        
+        // 差异显示切换
+        document.getElementById('showDiffToggle').addEventListener('change', (e) => {
+            this.updateOptimizedDisplay(e.target.checked);
+        });
+        
+        // Temperature slider 实时更新显示值
+        document.getElementById('aiTemperature').addEventListener('input', (e) => {
+            document.getElementById('tempValue').textContent = e.target.value;
+        });
+        
+        // 移动端菜单切换
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+        
+        if (mobileMenuBtn && sidebar && sidebarOverlay) {
+            mobileMenuBtn.addEventListener('click', () => {
+                sidebar.classList.toggle('show');
+                sidebarOverlay.classList.toggle('show');
+            });
+            
+            sidebarOverlay.addEventListener('click', () => {
+                sidebar.classList.remove('show');
+                sidebarOverlay.classList.remove('show');
+            });
+        }
         
         // 键盘快捷键
         document.addEventListener('keydown', (e) => {
@@ -1254,18 +1282,53 @@ class PromptManager {
             const pos = (idx / this.diffItems.length) * 100;
             const type = item.type === 'added' ? 'added' : 'removed';
             const isFirst = idx === 0 ? 'active' : '';
-            markersHTML += `<div class="diff-nav-marker ${type} ${isFirst}" data-nav-index="${idx}" style="left: ${pos}%"></div>`;
+            markersHTML += `<div class="diff-nav-marker ${type} ${isFirst}" data-nav-index="${idx}" style="left: ${pos}%" title="双击删除此差异点"></div>`;
         });
         
         track.innerHTML = markersHTML;
         
         // 点击跳转
         track.onclick = (e) => {
-            const rect = track.getBoundingClientRect();
-            const p = (e.clientX - rect.left) / rect.width;
-            const idx = Math.floor(p * this.diffItems.length);
-            this.navigateToDiff(Math.min(idx, this.diffItems.length - 1));
+            if (e.target.classList.contains('diff-nav-marker')) {
+                const idx = parseInt(e.target.dataset.navIndex);
+                this.navigateToDiff(idx);
+            } else {
+                const rect = track.getBoundingClientRect();
+                const p = (e.clientX - rect.left) / rect.width;
+                const idx = Math.floor(p * this.diffItems.length);
+                this.navigateToDiff(Math.min(idx, this.diffItems.length - 1));
+            }
         };
+        
+        // 双击删除差异点
+        track.ondblclick = (e) => {
+            if (e.target.classList.contains('diff-nav-marker')) {
+                e.stopPropagation();
+                const idx = parseInt(e.target.dataset.navIndex);
+                this.deleteDiffPoint(idx);
+            }
+        };
+    }
+    
+    /**
+     * 删除单个差异点
+     */
+    deleteDiffPoint(index) {
+        if (!this.diffItems || index < 0 || index >= this.diffItems.length) return;
+        
+        // 从数组中移除
+        this.diffItems.splice(index, 1);
+        
+        // 重新渲染导航条
+        this.renderDiffNavigation();
+        
+        // 如果还有差异点，导航到当前位置或上一个
+        if (this.diffItems.length > 0) {
+            const newIndex = Math.min(index, this.diffItems.length - 1);
+            this.navigateToDiff(newIndex);
+        }
+        
+        this.showToast('已删除差异点', 'success');
     }
     
     /**
@@ -2320,11 +2383,14 @@ class PromptManager {
         document.getElementById('aiLoadingIndicator').style.display = 'none';
         document.getElementById('aiErrorMessage').style.display = 'none';
         
-        // 禁用替换按钮
+        // 禁用替换和保存按钮
         document.getElementById('replaceContentBtn').disabled = true;
+        document.getElementById('saveOptimizedBtn').disabled = true;
         
-        // 清除存储的优化结果
+        // 清除存储的优化结果和用户指令
         this.optimizedContent = null;
+        this.originalContentForDiff = null;
+        document.getElementById('aiUserPrompt').value = '';
         
         // 显示模态框
         document.getElementById('aiOptimizeModal').classList.add('show');
@@ -2344,6 +2410,13 @@ class PromptManager {
     async runAIOptimize() {
         const content = document.getElementById('promptContent').value;
         const model = document.getElementById('aiModelSelect').value;
+        const userPrompt = document.getElementById('aiUserPrompt').value.trim();
+        
+        // 收集模型参数
+        const temperature = parseFloat(document.getElementById('aiTemperature').value);
+        const topP = parseFloat(document.getElementById('aiTopP').value);
+        const maxTokens = parseInt(document.getElementById('aiMaxTokens').value);
+        const deepThinking = document.getElementById('aiDeepThinking').checked;
         
         // 显示加载状态
         document.getElementById('aiLoadingIndicator').style.display = 'flex';
@@ -2356,7 +2429,15 @@ class PromptManager {
             const response = await fetch(`${this.API_BASE}/ai/optimize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, model })
+                body: JSON.stringify({ 
+                    content, 
+                    model, 
+                    userPrompt,
+                    temperature,
+                    topP,
+                    maxTokens,
+                    deepThinking
+                })
             });
             
             const data = await response.json();
@@ -2365,15 +2446,17 @@ class PromptManager {
                 throw new Error(data.error || '优化失败');
             }
             
-            // 保存优化结果
+            // 保存优化结果和原始内容
             this.optimizedContent = data.optimized;
+            this.originalContentForDiff = content;
             
-            // 显示优化结果
-            document.getElementById('aiOptimizedContent').textContent = data.optimized;
+            // 显示优化结果（带差异高亮）
+            this.updateOptimizedDisplay(document.getElementById('showDiffToggle').checked);
             document.getElementById('aiOptimizedContent').classList.add('has-content');
             
-            // 启用替换按钮
+            // 启用替换和保存按钮
             document.getElementById('replaceContentBtn').disabled = false;
+            document.getElementById('saveOptimizedBtn').disabled = false;
             
             this.showToast('优化完成 ✨', 'success');
         } catch (err) {
@@ -2384,6 +2467,89 @@ class PromptManager {
         } finally {
             document.getElementById('aiLoadingIndicator').style.display = 'none';
             document.getElementById('runOptimizeBtn').disabled = false;
+        }
+    }
+    
+    /**
+     * 更新优化结果显示（切换差异/纯文本）
+     */
+    updateOptimizedDisplay(showDiff) {
+        if (!this.optimizedContent) return;
+        
+        const container = document.getElementById('aiOptimizedContent');
+        
+        if (showDiff && window.DiffTool && this.originalContentForDiff) {
+            // 使用 DiffTool 生成差异 HTML
+            const diffResult = window.DiffTool.diff(this.originalContentForDiff, this.optimizedContent);
+            container.innerHTML = window.DiffTool.toHTML(diffResult);
+        } else {
+            // 显示纯文本
+            container.textContent = this.optimizedContent;
+        }
+    }
+    
+    /**
+     * 保存优化结果为新版本
+     */
+    async saveOptimizedAsVersion() {
+        if (!this.optimizedContent || !this.currentPrompt) {
+            this.showToast('没有可保存的内容', 'error');
+            return;
+        }
+        
+        try {
+            const prompt = this.currentPrompt;
+            if (!prompt) {
+                throw new Error('未找到当前 Prompt');
+            }
+            
+            const oldContent = prompt.content;
+            
+            // 计算差异
+            const diffResult = DiffTool.diff(oldContent, this.optimizedContent);
+            const changesSummary = DiffTool.getSummary(diffResult);
+            
+            // 将当前内容保存到历史记录
+            prompt.history = prompt.history || [];
+            prompt.history.push({
+                version: prompt.history.length,
+                content: oldContent,
+                timestamp: prompt.updatedAt || new Date().toISOString(),
+                changes: 'AI 优化前的版本'
+            });
+            
+            // 更新 prompt 内容
+            prompt.content = this.optimizedContent;
+            prompt.updatedAt = new Date().toISOString();
+            
+            // 保存到服务器
+            const response = await fetch(`${this.API_BASE}/prompts/${prompt.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(prompt)
+            });
+            
+            if (!response.ok) {
+                throw new Error('保存失败');
+            }
+            
+            // 同步更新编辑器内容
+            document.getElementById('promptContent').value = this.optimizedContent;
+            document.getElementById('charCount').textContent = `${this.optimizedContent.length} 字符`;
+            
+            // 刷新版本选择器
+            this.renderVersionSelectors();
+            
+            // 更新差异对比
+            this.updateDiffComparison();
+            
+            // 关闭模态框
+            this.closeAIOptimizeModal();
+            
+            this.showToast(`已保存 (${changesSummary}) 💾`, 'success');
+        } catch (err) {
+            console.error('保存优化版本失败:', err);
+            this.showToast('保存失败: ' + err.message, 'error');
         }
     }
     

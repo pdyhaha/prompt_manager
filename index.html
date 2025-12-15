@@ -2,17 +2,35 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Prompt 管理平台</title>
     <meta name="description" content="本地 Prompt 管理平台，支持版本历史跟踪和差异对比">
+    
+    <!-- PWA 支持 -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Prompts">
+    
+    <!-- 图标 -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="apple-touch-icon" href="/icons/icon-152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192.png">
+    
+    <!-- 样式 -->
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- 移动端菜单按钮 -->
+    <button id="mobileMenuBtn" class="mobile-menu-btn" aria-label="菜单">☰</button>
+    <!-- 侧边栏遮罩 -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+    
     <div class="app-container">
         <!-- 左侧边栏 -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <h1 class="logo">📝 Prompt Manager</h1>
                 <button id="newPromptBtn" class="btn btn-primary btn-block">
@@ -247,13 +265,55 @@
                 <div class="model-selector">
                     <label>选择模型：</label>
                     <select id="aiModelSelect" class="version-select ai-model-select">
-                        <option value="gemini">🌟 Gemini</option>
-                        <option value="claude">🤖 Claude</option>
+                        <optgroup label="通义千问 (阿里云)">
+                            <option value="qwen-plus">🚀 Qwen Plus</option>
+                            <option value="qwen3-max">💎 Qwen3 Max</option>
+                        </optgroup>
+                        <optgroup label="智谱清言 (Zhipu)">
+                            <option value="glm-4.5">⚡ GLM-4.5</option>
+                            <option value="glm-4.6">🌟 GLM-4.6</option>
+                        </optgroup>
+                        <optgroup label="Google">
+                            <option value="gemini-3-pro">🌟 Gemini 3 Pro</option>
+                        </optgroup>
+                        <optgroup label="Anthropic">
+                            <option value="claude-4.5-sonnet">🤖 Claude 4.5 Sonnet</option>
+                        </optgroup>
+                        <optgroup label="OpenAI">
+                            <option value="gpt-5.1">🧠 GPT-5.1</option>
+                            <option value="gpt-5.2">💎 GPT-5.2</option>
+                        </optgroup>
                     </select>
+                    <button id="runOptimizeBtn" class="btn btn-primary">
+                        🚀 开始优化
+                    </button>
                 </div>
-                <button id="runOptimizeBtn" class="btn btn-primary">
-                    🚀 开始优化
-                </button>
+            </div>
+            <div class="ai-model-params">
+                <div class="param-group">
+                    <label>Temperature: <span id="tempValue">0.7</span></label>
+                    <input type="range" id="aiTemperature" min="0" max="2" step="0.1" value="0.7" class="param-slider">
+                    <span class="param-hint">低=精确 / 高=创意</span>
+                </div>
+                <div class="param-group">
+                    <label>Top P:</label>
+                    <input type="number" id="aiTopP" min="0" max="1" step="0.1" value="0.9" class="param-input">
+                </div>
+                <div class="param-group">
+                    <label>Max Tokens:</label>
+                    <input type="number" id="aiMaxTokens" min="100" max="8192" step="100" value="4096" class="param-input">
+                </div>
+                <div class="param-group param-toggle">
+                    <label>
+                        <input type="checkbox" id="aiDeepThinking">
+                        🧠 深度思考模式
+                    </label>
+                    <span class="param-hint">更慢但更深入的推理</span>
+                </div>
+            </div>
+            <div class="ai-custom-prompt">
+                <label>优化指令（可选）：</label>
+                <textarea id="aiUserPrompt" class="ai-custom-prompt-input" placeholder="输入额外优化要求，例如：让语气更正式、添加更多约束条件、简化表达方式、保持英文不变..."></textarea>
             </div>
             <div class="ai-optimize-content">
                 <div class="ai-content-pane">
@@ -262,7 +322,13 @@
                 </div>
                 <div class="ai-arrow">→</div>
                 <div class="ai-content-pane">
-                    <div class="ai-pane-header">✨ 优化结果</div>
+                    <div class="ai-pane-header">
+                        ✨ 优化结果
+                        <label class="diff-toggle">
+                            <input type="checkbox" id="showDiffToggle" checked>
+                            显示差异
+                        </label>
+                    </div>
                     <div id="aiOptimizedContent" class="ai-pane-content">
                         <div class="ai-placeholder">点击「开始优化」查看结果</div>
                     </div>
@@ -275,6 +341,9 @@
             <div id="aiErrorMessage" class="ai-error" style="display: none;"></div>
             <div class="modal-footer">
                 <button id="cancelAIOptimizeBtn" class="btn btn-secondary">取消</button>
+                <button id="saveOptimizedBtn" class="btn btn-success" disabled>
+                    💾 保存优化版本
+                </button>
                 <button id="replaceContentBtn" class="btn btn-primary" disabled>
                     ✓ 替换内容
                 </button>
@@ -284,5 +353,20 @@
 
     <script src="diff.js"></script>
     <script src="app.js"></script>
+    
+    <!-- Service Worker 注册 -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then((registration) => {
+                        console.log('SW 注册成功:', registration.scope);
+                    })
+                    .catch((err) => {
+                        console.log('SW 注册失败:', err);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Prompt Manager</string>
+    <string name="title_activity_main">Prompt Manager</string>
+    <string name="package_name">com.promptmanager.app</string>
+    <string name="custom_url_scheme">com.promptmanager.app</string>
+</resources>

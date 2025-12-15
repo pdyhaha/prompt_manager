@@ -9,19 +9,18 @@ const { v4: uuidv4 } = require('uuid');
 // AI API Keys
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
+const ZHIPU_API_KEY = process.env.ZHIPU_API_KEY;
 
-// System prompt for optimizing prompts
-const OPTIMIZATION_SYSTEM_PROMPT = `你是一个专业的 Prompt 工程师。你的任务是优化用户提供的 Prompt，使其更加清晰、具体、有效。
+// 默认系统提示词 - Prompt 优化专用
+const OPTIMIZATION_SYSTEM_PROMPT = `你是一个专业的 Prompt 工程师。请根据用户的优化要求修改 Prompt。
 
-优化原则：
-1. 保持原意：不改变 Prompt 的核心目的和意图
-2. 结构清晰：使用清晰的结构和格式（如分点、分段）
-3. 具体明确：将模糊的描述改为具体的指令
-4. 添加约束：适当添加输出格式、长度、语气等约束
-5. 角色设定：如果适合，添加或优化角色设定
-6. 示例补充：如果需要，添加简短的示例
-
-直接返回优化后的 Prompt，不要包含任何解释或说明。`;
+基本原则：
+1. 严格按照用户的优化要求进行修改
+2. 保持原 Prompt 的核心意图不变
+3. 只修改需要优化的部分，其他内容保持原样
+4. 优化时注意结构清晰、表达具体`;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -376,10 +375,12 @@ app.delete('/api/prompts/:id/history/:version', async (req, res) => {
 // ========== AI Optimization API ==========
 
 // 调用 Claude API
-async function callClaudeAPI(content) {
+async function callClaudeAPI(content, systemPrompt, params = {}) {
     if (!ANTHROPIC_API_KEY) {
         throw new Error('未配置 ANTHROPIC_API_KEY');
     }
+    
+    const { temperature = 0.7, maxTokens = 4096 } = params;
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -390,10 +391,11 @@ async function callClaudeAPI(content) {
         },
         body: JSON.stringify({
             model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 4096,
-            system: OPTIMIZATION_SYSTEM_PROMPT,
+            max_tokens: maxTokens,
+            temperature: temperature,
+            system: systemPrompt,
             messages: [
-                { role: 'user', content: `请优化以下 Prompt：\n\n${content}` }
+                { role: 'user', content: content }
             ]
         })
     });
@@ -408,10 +410,12 @@ async function callClaudeAPI(content) {
 }
 
 // 调用 Gemini API
-async function callGeminiAPI(content) {
+async function callGeminiAPI(content, systemPrompt, params = {}) {
     if (!GOOGLE_API_KEY) {
         throw new Error('未配置 GOOGLE_API_KEY');
     }
+    
+    const { temperature = 0.7, topP = 0.9, maxTokens = 4096 } = params;
     
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`, {
         method: 'POST',
@@ -420,15 +424,17 @@ async function callGeminiAPI(content) {
         },
         body: JSON.stringify({
             systemInstruction: {
-                parts: [{ text: OPTIMIZATION_SYSTEM_PROMPT }]
+                parts: [{ text: systemPrompt }]
             },
             contents: [
                 {
-                    parts: [{ text: `请优化以下 Prompt：\n\n${content}` }]
+                    parts: [{ text: content }]
                 }
             ],
             generationConfig: {
-                maxOutputTokens: 4096
+                temperature: temperature,
+                topP: topP,
+                maxOutputTokens: maxTokens
             }
         })
     });
@@ -442,26 +448,117 @@ async function callGeminiAPI(content) {
     return data.candidates[0].content.parts[0].text;
 }
 
+// 调用 OpenAI 兼容 API (支持通义千问/OpenAI)
+async function callOpenAICompatibleAPI(content, modelName, systemPrompt, params = {}) {
+    if (!OPENAI_API_KEY) {
+        throw new Error('未配置 OPENAI_API_KEY');
+    }
+    
+    const { temperature = 0.7, topP = 0.9, maxTokens = 4096 } = params;
+    
+    const response = await fetch(`${OPENAI_API_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: modelName,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: content }
+            ],
+            temperature: temperature,
+            top_p: topP,
+            max_tokens: maxTokens
+        })
+    });
+    
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`OpenAI API 错误: ${error}`);
+    }
+    
+    const data = await response.json();
+    return data.choices[0].message.content;
+}
+
+// 调用智谱 AI API (GLM 模型)
+async function callZhipuAPI(content, modelName, systemPrompt, params = {}) {
+    if (!ZHIPU_API_KEY) {
+        throw new Error('未配置 ZHIPU_API_KEY');
+    }
+    
+    const { temperature = 0.7, topP = 0.9, maxTokens = 4096 } = params;
+    
+    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ZHIPU_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: modelName,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: content }
+            ],
+            temperature: temperature,
+            top_p: topP,
+            max_tokens: maxTokens
+        })
+    });
+    
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`智谱 API 错误: ${error}`);
+    }
+    
+    const data = await response.json();
+    return data.choices[0].message.content;
+}
+
 // AI 优化 Prompt 接口
 app.post('/api/ai/optimize', async (req, res) => {
     try {
-        const { content, model } = req.body;
+        const { content, model, userPrompt = '', temperature = 0.7, topP = 0.9, maxTokens = 4096, deepThinking = false } = req.body;
         
         if (!content) {
             return res.status(400).json({ error: '请提供要优化的 Prompt 内容' });
         }
         
-        if (!model || !['claude', 'gemini'].includes(model)) {
-            return res.status(400).json({ error: '请选择有效的模型 (claude 或 gemini)' });
+        if (!model || !['qwen-plus', 'qwen3-max', 'glm-4.5', 'glm-4.6', 'gemini-3-pro', 'claude-4.5-sonnet', 'gpt-5.1', 'gpt-5.2'].includes(model)) {
+            return res.status(400).json({ error: '请选择有效的模型' });
         }
         
+        // 构建最终系统提示词：默认 + 用户优化要求
+        let finalSystemPrompt = OPTIMIZATION_SYSTEM_PROMPT;
+        if (userPrompt && userPrompt.trim()) {
+            // 用户输入的优化要求
+            finalSystemPrompt += `\n\n用户的优化要求：${userPrompt.trim()}`;
+        }
+        // 添加输出指令
+        finalSystemPrompt += `\n\n请直接输出修改后的 Prompt，不要包含任何解释说明。`;
+        
+        // 模型参数对象
+        const params = { temperature, topP, maxTokens, deepThinking };
+        
         console.log(`[AI 优化] 使用 ${model} 模型优化 Prompt...`);
+        if (userPrompt) {
+            console.log(`[AI 优化] 用户额外指令: ${userPrompt.substring(0, 50)}...`);
+        }
         
         let optimized;
-        if (model === 'claude') {
-            optimized = await callClaudeAPI(content);
+        if (model.startsWith('claude')) {
+            optimized = await callClaudeAPI(content, finalSystemPrompt, params);
+        } else if (model.startsWith('gemini')) {
+            optimized = await callGeminiAPI(content, finalSystemPrompt, params);
+        } else if (model.startsWith('glm-')) {
+            // GLM 模型使用智谱 API
+            optimized = await callZhipuAPI(content, model, finalSystemPrompt, params);
         } else {
-            optimized = await callGeminiAPI(content);
+            // qwen-* 或 gpt-* 模型使用 OpenAI 兼容 API
+            optimized = await callOpenAICompatibleAPI(content, model, finalSystemPrompt, params);
         }
         
         console.log(`[AI 优化] ${model} 优化完成`);
@@ -476,7 +573,9 @@ app.post('/api/ai/optimize', async (req, res) => {
 app.get('/api/ai/status', (req, res) => {
     res.json({
         claude: !!ANTHROPIC_API_KEY,
-        gemini: !!GOOGLE_API_KEY
+        gemini: !!GOOGLE_API_KEY,
+        qwen: !!OPENAI_API_KEY,
+        openai: !!OPENAI_API_KEY
     });
 });
 

@@ -1,19 +1,19 @@
 {
   "name": "prompt-manager",
   "version": "1.0.0",
-  "description": "本地 Prompt 管理平台",
+  "description": "Prompt 管理平台 - 高效管理和优化你的 AI Prompts",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "node server.js"
   },
+  "keywords": ["prompt", "ai", "管理", "pwa"],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
     "cors": "^2.8.5",
-    "uuid": "^9.0.0",
-    "dotenv": "^16.3.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.0"
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "uuid": "^9.0.0"
   }
 }
